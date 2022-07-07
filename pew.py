@@ -21,7 +21,6 @@ _SALT = const(132)
 _PATTERNS = (
     b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
     b'\x44\x11\x44\x11\x44\x11\x44\x11\x44\x11',
-#    b'\xee\xbb\xee\xbb\xee\xbb\xee\xbb\xee\xbb',
     b'\x55\xaa\x55\xaa\x55\xaa\x55\xaa\x55\xaa',
     b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff',
 )
@@ -198,31 +197,8 @@ def init():
     if _tick is not None:
         return
 
-#    _INIT = (
-#        b'\xe2\x00' # reset
-#        b'\x2f\x00' # power on
-#        b'\x81\x00' # contrast
-#        b'\xa4\x00' # a4 display normal
-#        b'\xaf\x00' # display on
-#    )
-#
-#    displayio.release_displays()
-#    spi = busio.SPI(clock=board._SCK, MOSI=board._MOSI)
-#    bus = displayio.FourWire(spi, chip_select=board._CS, baudrate=40_000_000,
-#            reset=board._RST)
-#    display = displayio.Display(bus, _INIT, width=96, height=68, color_depth=1,
-#            data_as_commands=True, grayscale=True, SH1107_addressing=True,
-#            pixels_in_byte_share_row=False, brightness=0,
-#            rotation=180, auto_refresh=False)
-
     _light = pwmio.PWMOut(board._BL)
 
-    buffer = b'\x00' * 96
-    bus = board.DISPLAY.bus
-    for y in range(9):
-        bus.send(0x00, b'')
-        bus.send(0x10, b'')
-        bus.send(0xb0|y, buffer)
     _tick = time.monotonic()
     _touch = tuple(touchio.TouchIn(pin) for pin in (
         board._X,
@@ -232,3 +208,4 @@ def init():
         board._DOWN,
         board._UP,
     ))
+    print("\x1b[2J")
