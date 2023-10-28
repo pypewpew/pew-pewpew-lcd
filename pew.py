@@ -1,10 +1,8 @@
 from micropython import const
 import board
-import busio
-import displayio
-import pwmio
 import time
-import touchio
+import struct
+import keypad
 
 
 _FONT = (
@@ -18,48 +16,54 @@ _FONT = (
     b'wUws_{{HHIV{{HH]s{{HLD@{{HbbH{{HHV[a{D_}D{Cw|wC{wwwwwwpwOwp{WKfxu{@YYY@{'
 )
 _SALT = const(132)
-_PATTERNS = (
-    b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
-    b'\x44\x11\x44\x11\x44\x11\x44\x11\x44\x11',
-    b'\x55\xaa\x55\xaa\x55\xaa\x55\xaa\x55\xaa',
-    b'\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff',
-)
+_PAL = b'\x00\x00\x04\x60\xf8\x00\xfd\x00'
 
-K_UP = 0x01
+K_X = 0x01
 K_DOWN = 0x02
 K_LEFT = 0x04
 K_RIGHT = 0x08
-K_O =0x10
-K_X = 0x20
+K_UP = 0x10
+K_O = 0x20
 
 _tick = None
+_tiles = None
 
 
 def brightness(level):
-    _light.duty_cycle = level * 4369
+    pass
+
 
 def show(pix):
-    pix_buffer = pix.buffer
-    bus = board.DISPLAY.bus
-    buffer = bytearray(80)
+    send = board.DISPLAY.bus.send
     for y in range(8):
-        pix_index = pix.width * (7 - y) + 7
-        board.DISPLAY.bus.send(0x08, b'')
-        board.DISPLAY.bus.send(0x10, b'')
-        index = 0
+        send(43, struct.pack(">hh", y * 16, y * 16 + 15))
         for x in range(8):
-            buffer[index:index+10] = _PATTERNS[pix_buffer[pix_index]]
-            pix_index -= 1
-            index += 10
-        bus.send(0xb0|(y), buffer)
+            c = pix.pixel(x, y) & 0x03
+            send(42, struct.pack(">hh", 16 + x * 16, x * 16 + 31))
+            send(44, _tiles[c * 512:c * 512 + 512])
 
 
-def keys():
-    keys = 0
-    for bit, touch in enumerate(_touch):
-        keys <<= 1
-        keys |= touch.value
-    return keys
+class _Buttons:
+    def __init__(self):
+        self.keys = keypad.Keys((board.X, board.DOWN, board.LEFT, board.RIGHT,
+            board.UP, board.O), value_when_pressed=False, interval=0.01)
+        self.last_state = 0
+        self.event = keypad.Event(0, False)
+
+    def get_pressed(self):
+        buttons = self.last_state
+        events = self.keys.events
+        while events:
+            if events.get_into(self.event):
+                bit = 1 << self.event.key_number
+                if self.event.pressed:
+                    buttons |= bit
+                    self.last_state |= bit
+                else:
+                    self.last_state &= ~bit
+        return buttons
+
+keys = _Buttons().get_pressed
 
 
 def tick(delay):
@@ -73,11 +77,13 @@ def tick(delay):
         time.sleep(_tick - now)
 
 
-class GameOver(Exception):
+class GameOver(SystemExit):
     pass
 
 
 class Pix:
+    __slots__ = ('buffer', 'width', 'height')
+
     def __init__(self, width=8, height=8, buffer=None):
         if buffer is None:
             buffer = bytearray(width * height)
@@ -91,7 +97,7 @@ class Pix:
         font = memoryview(_FONT)
         if colors is None:
             if color is None:
-                colors = (3, 2, 1, bgcolor)
+                colors = (3, 2, bgcolor, bgcolor)
             else:
                 colors = (color, color, bgcolor, bgcolor)
         x = 0
@@ -190,22 +196,29 @@ class Pix:
 
 
 def init():
-    global _tick
-    global _touch
-    global _light
+    global _tick, _tiles
 
     if _tick is not None:
         return
 
-    _light = pwmio.PWMOut(board._BL)
-
     _tick = time.monotonic()
-    _touch = tuple(touchio.TouchIn(pin) for pin in (
-        board._X,
-        board._O,
-        board._RIGHT,
-        board._LEFT,
-        board._DOWN,
-        board._UP,
-    ))
-    print("\x1b[2J")
+
+    board.DISPLAY.auto_refresh = False
+    send = board.DISPLAY.bus.send
+    for i in range(128):
+        send(42, struct.pack(">hh", 0, 159))
+        send(43, struct.pack(">hh", i, i))
+        send(44, b'\x00\x00' * 160)
+
+    _tiles = bytearray(4 * 512)
+
+    def setpixel(x, y, c, n=1):
+        a = c * 512 + x * 2 + y * 32
+        _tiles[a:a + n * 2] = _PAL[c * 2: c * 2 + 2] * n
+
+    for c in range(4):
+        setpixel(2, 1, c, 13)
+        for i in range(13):
+            setpixel(1, i + 2, c, 15)
+        setpixel(2, 15, c, 13)
+    _tiles = memoryview(_tiles)
