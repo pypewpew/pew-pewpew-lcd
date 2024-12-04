@@ -205,10 +205,10 @@ def init():
 
     board.DISPLAY.auto_refresh = False
     send = board.DISPLAY.bus.send
-    for i in range(128):
-        send(42, struct.pack(">hh", 0, 159))
+    for i in range(132):
+        send(42, struct.pack(">hh", 0, 161))
         send(43, struct.pack(">hh", i, i))
-        send(44, b'\x00\x00' * 160)
+        send(44, b'\x00\x00' * 162)
 
     _tiles = bytearray(4 * 512)
 
